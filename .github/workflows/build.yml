@@ -59,7 +59,6 @@ jobs:
       - name: Install Android NDK
         if: matrix.config.target == 'aarch64-linux-android'
         run: |
-          sudo apt-get update
           sudo apt-get install -yq lib32stdc++6 lib32z1
           rustup target add aarch64-linux-android
           curl -s https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -o android-ndk.zip
