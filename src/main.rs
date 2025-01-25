@@ -10,8 +10,8 @@ use std::process;
 fn main() {
     let args = env::args().collect::<Vec<String>>();
     if args.len() < 2 {
-        eprintln!("{}", "Please provide a github release link".red());
-        process::exit(1);
+        println!("gode-check v{}\nUsage: gode-check <release link>", env!("CARGO_PKG_VERSION"));
+        process::exit(0);
     }
     let url = &args[1];
     let parts = url.split('/').collect::<Vec<&str>>();
