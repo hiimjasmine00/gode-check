@@ -67,16 +67,6 @@ jobs:
           echo "ANDROID_NDK_ROOT=${PWD}/android-ndk-r25b" >> $GITHUB_ENV
           echo "${PWD}/android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-      - name: Build OpenSSL
-        if: matrix.config.target == 'aarch64-linux-android'
-        run: |
-            git clone https://github.com/openssl/openssl.git
-            cd openssl
-            ./Configure android-arm64 -D__ANDROID_API__=21
-            make
-            make install
-            echo "OPENSSL_DIR=${PWD}/openssl" >> $GITHUB_ENV
-
       - name: Build
         run: |
           if [ "${{ matrix.config.target }}" = "x86_64-pc-windows-gnu" ]; then
