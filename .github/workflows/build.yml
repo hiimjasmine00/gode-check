@@ -1,0 +1,79 @@
+# Some ideas were taken from https://github.com/geode-sdk/cli/blob/v3.4.0/.github/workflows/build.yml
+
+name: Build Binaries
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - ".github/workflows/build.yml"
+    branches:
+      - "**"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Windows
+            runs-on: windows-latest
+            id: windows
+            executable: gode-check.exe
+            target: x86_64-pc-windows-msvc
+
+          - name: macOS
+            runs-on: macos-latest
+            id: macos
+            executable: gode-check
+            target: x86_64-apple-darwin
+
+          - name: Linux
+            runs-on: ubuntu-latest
+            id: linux
+            executable: gode-check
+            target: x86_64-unknown-linux-gnu
+
+          - name: Android
+            runs-on: ubuntu-latest
+            id: android
+            executable: gode-check
+            target: aarch64-linux-android
+
+    name: Build ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.runs-on }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.config.target }}
+  
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.config.id }}
+
+      - name: Install Android NDK
+        if: matrix.config.target == 'aarch64-linux-android'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -yq lib32stdc++6 lib32z1
+          rustup target add aarch64-linux-android
+          curl -s https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -o android-ndk.zip
+          unzip -q android-ndk.zip
+          echo "::add-path::${PWD}/android-ndk-r25b"
+
+      - name: Build
+        run: |
+          cargo build --target ${{ matrix.config.target }} --release
+          mkdir ./output
+          mv ./target/${{ matrix.config.target }}/release/${{ matrix.config.executable }} ./output/${{ matrix.config.executable }}
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: gode-check-${{ matrix.config.id }}
+          path: ./output/
