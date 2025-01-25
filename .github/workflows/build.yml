@@ -19,25 +19,25 @@ jobs:
         config:
           - name: Windows
             runs-on: ubuntu-latest
-            id: windows
+            id: windows-x64
             executable: gode-check.exe
             target: x86_64-pc-windows-gnu
 
           - name: macOS
             runs-on: macos-latest
-            id: macos
+            id: macos-x64
             executable: gode-check
             target: x86_64-apple-darwin
 
           - name: Linux
             runs-on: ubuntu-latest
-            id: linux
+            id: linux-x64
             executable: gode-check
             target: x86_64-unknown-linux-gnu
 
           - name: Android
             runs-on: ubuntu-latest
-            id: android
+            id: android-aarch64
             executable: gode-check
             target: aarch64-linux-android
 
@@ -65,6 +65,16 @@ jobs:
           curl -s https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -o android-ndk.zip
           unzip -q android-ndk.zip
           echo "${PWD}/android-ndk-r25b" >> $GITHUB_PATH
+
+      - name: Build OpenSSL
+        if: matrix.config.target == 'aarch64-linux-android'
+        run: |
+            git clone https://github.com/openssl/openssl.git
+            cd openssl
+            ./Configure android-arm64 -D__ANDROID_API__=21
+            make
+            make install
+            echo "OPENSSL_DIR=${PWD}/openssl" >> $GITHUB_ENV
 
       - name: Build
         run: |
