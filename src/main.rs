@@ -237,16 +237,16 @@ fn main() {
             let release_hash = sha256::digest(release_data);
 
             if artifact_hash == release_hash {
-                println!("{}", format!("{}: {}", if artifact_files.len() > 1 {
-                    format!("{} Comparison", artifact_file.file_name().unwrap_or_default().to_string_lossy()).blue()
+                println!("{}", format!("{} {}", if artifact_files.len() > 1 {
+                    format!("{} Comparison:", artifact_file.file_name().unwrap_or_default().to_string_lossy()).blue()
                 } else {
-                    "Comparison".blue()
+                    "Comparison:".blue()
                 }, "✅ Match".green()));
             } else {
-                println!("{}", format!("{}: {}", if artifact_files.len() > 1 {
-                    format!("{} Comparison", artifact_file.file_name().unwrap_or_default().to_string_lossy()).blue()
+                println!("{}", format!("{} {}", if artifact_files.len() > 1 {
+                    format!("{} Comparison:", artifact_file.file_name().unwrap_or_default().to_string_lossy()).blue()
                 } else {
-                    "Comparison".blue()
+                    "Comparison:".blue()
                 }, "❌ Mismatch".red()));
             }
 
