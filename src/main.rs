@@ -10,7 +10,7 @@ use std::process;
 fn main() {
     let args = env::args().collect::<Vec<String>>();
     if args.len() < 2 {
-        println!("gode-check v{}\nUsage: gode-check <release link>", env!("CARGO_PKG_VERSION"));
+        println!("gode-check v{}\nUsage: gode-check <release link> [artifact commit]", env!("CARGO_PKG_VERSION"));
         process::exit(0);
     }
     let url = &args[1];
