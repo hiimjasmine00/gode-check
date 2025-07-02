@@ -41,10 +41,14 @@ fn main() {
             process::exit(1);
         });
 
-    let mut release_commit: String = release["target_commitish"].as_str().unwrap_or_default().into();
-    if release_commit.len() != 40 {
+    let release_commit: String;
+    if args.len() > 2 {
+        release_commit = args[2].clone();
+
+        println!("Using provided commit: {}", release_commit.cyan());
+    } else {
         release_commit = client
-            .get(&format!("{api_url}/tags"))
+            .get(&format!("{api_url}/git/refs/tags/{tag}"))
             .header("Accept", "application/json")
             .header("User-Agent", "gode-check")
             .send()
@@ -56,19 +60,10 @@ fn main() {
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error parsing tags JSON: {:?}", e).red());
                 process::exit(1);
-            })
-            .as_array()
-            .unwrap_or(&vec![])
-            .iter()
-            .find(|t| {
-                t["name"].as_str().unwrap_or_default() == tag
-            }).unwrap_or_else(|| {
-                eprintln!("{}", "No matching tag found".red());
-                process::exit(1);
-            })["commit"]["sha"].as_str().unwrap_or_default().into();
+            })["object"]["sha"].as_str().unwrap_or_default().into();
+        
+        println!("Release found for commit: {}", release_commit.cyan());
     }
-
-    println!("Release found for commit: {}", release_commit.cyan());
 
     let artifacts = client
         .get(&format!("{api_url}/actions/artifacts"))
@@ -88,7 +83,7 @@ fn main() {
         .unwrap_or(&vec![])
         .iter()
         .filter(|a| {
-            a["workflow_run"]["head_sha"].as_str().unwrap_or_default() == release_commit
+            a["workflow_run"]["head_sha"].as_str().unwrap_or_default().starts_with(&release_commit)
         })
         .cloned()
         .collect::<Vec<Value>>();
@@ -131,10 +126,6 @@ fn main() {
     let mut geode_files: Vec<Vec<PathBuf>> = vec![];
 
     for i in 0..artifacts_len {
-        let artifact = &artifacts[i];
-        let id = artifact["id"].as_u64().unwrap_or_default();
-        let workflow_run_id = artifact["workflow_run"]["id"].as_u64().unwrap_or_default();
-        
         if artifacts_len == 1 {
             println!("Downloading artifact...");
         } else {
@@ -149,26 +140,10 @@ fn main() {
             });
         }
 
-        let suite_id = client
-            .get(&format!("{api_url}/actions/runs/{workflow_run_id}"))
-            .header("Accept", "application/json")
-            .header("User-Agent", "gode-check")
-            .send()
-            .unwrap_or_else(|e| {
-                eprintln!("{}", format!("Error fetching workflow run: {:?}", e).red());
-                process::exit(1);
-            })
-            .json::<Value>()
-            .unwrap_or_else(|e| {
-                eprintln!("{}", format!("Error parsing workflow run JSON: {:?}", e).red());
-                process::exit(1);
-            })["check_suite"]["id"].as_u64().unwrap_or_default();
-
         let mut zip_data: Cursor<Vec<u8>> = Cursor::new(vec![]);
 
         client
-            .get(&format!("https://nightly.link/{repo}/suites/{suite_id}/artifacts/{id}"))
-            .header("Accept", "application/octet-stream")
+            .get(&format!("https://artifacts.hiimjasmine00.com/{repo}/{}", artifacts[i]["id"].as_u64().unwrap_or_default()))
             .send()
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error downloading artifact: {:?}", e).red());
