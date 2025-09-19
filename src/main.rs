@@ -47,7 +47,7 @@ fn main() {
 
         println!("Using provided commit: {}", release_commit.cyan());
     } else {
-        release_commit = client
+        let release_object = client
             .get(&format!("{api_url}/git/refs/tags/{tag}"))
             .header("Accept", "application/json")
             .header("User-Agent", "gode-check")
@@ -60,8 +60,28 @@ fn main() {
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error parsing tags JSON: {:?}", e).red());
                 process::exit(1);
-            })["object"]["sha"].as_str().unwrap_or_default().into();
-        
+            });
+        if release_object["object"]["type"].as_str().unwrap_or_default() != "commit" {
+            let tag_sha = release_object["object"]["sha"].as_str().unwrap_or_default();
+            let tag_object = client
+                .get(&format!("{api_url}/git/tags/{tag_sha}"))
+                .header("Accept", "application/json")
+                .header("User-Agent", "gode-check")
+                .send()
+                .unwrap_or_else(|e| {
+                    eprintln!("{}", format!("Error fetching tag object: {:?}", e).red());
+                    process::exit(1);
+                })
+                .json::<Value>()
+                .unwrap_or_else(|e| {
+                    eprintln!("{}", format!("Error parsing tag object JSON: {:?}", e).red());
+                    process::exit(1);
+                });
+            release_commit = tag_object["object"]["sha"].as_str().unwrap_or_default().to_string();
+        } else {
+            release_commit = release_object["object"]["sha"].as_str().unwrap_or_default().to_string();
+        }
+
         println!("Release found for commit: {}", release_commit.cyan());
     }
 
@@ -155,8 +175,12 @@ fn main() {
                 process::exit(1);
             });
 
-        zip_extract::extract(zip_data, &artifact_path, false).unwrap_or_else(|e| {
-            eprintln!("{}", format!("Error extracting artifact: {:?}", e).red());
+        let mut zip = zip::ZipArchive::new(zip_data).unwrap_or_else(|e| {
+            eprintln!("{}", format!("Error reading zip archive: {:?}", e).red());
+            process::exit(1);
+        });
+        zip.extract(&artifact_path).unwrap_or_else(|e| {
+            eprintln!("{}", format!("Error extracting zip archive: {:?}", e).red());
             process::exit(1);
         });
 
