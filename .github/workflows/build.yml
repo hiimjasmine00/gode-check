@@ -46,7 +46,7 @@ jobs:
     runs-on: ${{ matrix.config.runs-on }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@v1
         with:
@@ -93,6 +93,9 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: ./artifacts
+
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Read Version
         id: read_version
