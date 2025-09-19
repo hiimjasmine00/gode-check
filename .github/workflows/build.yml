@@ -6,6 +6,7 @@ on:
   push:
     paths:
       - "src/**"
+      - "Cargo.lock"
       - "Cargo.toml"
       - ".github/workflows/build.yml"
     branches:
@@ -47,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: stable
           targets: ${{ matrix.config.target }}
@@ -78,3 +79,30 @@ jobs:
         with:
           name: gode-check-${{ matrix.config.id }}
           path: ./output/
+  draft:
+    name: Create Draft Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: ./artifacts
+
+      - name: Read Version
+        id: read_version
+        run: |
+          echo "version=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')" >> $GITHUB_OUTPUT 
+          echo "Version is $VERSION"
+
+      - name: Create Draft Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: ./artifacts/**
+          tag_name: v${{ steps.read_version.outputs.version }}
+          name: v${{ steps.read_version.outputs.version }}
+          draft: true
+          prerelease: false
