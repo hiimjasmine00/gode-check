@@ -69,16 +69,21 @@ jobs:
         run: |
           if [ "${{ matrix.config.target }}" = "x86_64-pc-windows-gnu" ]; then
             sudo apt-get install gcc-mingw-w64-x86-64
+            SUFFIX="-${{ matrix.config.id }}.exe"
+          else
+            SUFFIX="-${{ matrix.config.id }}"
           fi
           cargo build --target ${{ matrix.config.target }} --release
           mkdir ./output
-          mv ./target/${{ matrix.config.target }}/release/${{ matrix.config.executable }} ./output/${{ matrix.config.executable }}
+          VERSION=$(grep '^version =' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          mv ./target/${{ matrix.config.target }}/release/${{ matrix.config.executable }} ./output/gode-check-${VERSION}${SUFFIX}
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: gode-check-${{ matrix.config.id }}
           path: ./output/
+
   draft:
     name: Create Draft Release
     needs: build
