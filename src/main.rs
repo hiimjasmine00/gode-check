@@ -117,7 +117,7 @@ fn main() {
     } else {
         println!("{}", "Artifact for commit found!".green());
     }
-    
+
     let temp_dir = std::env::temp_dir().join("gode-check");
     if temp_dir.exists() {
         fs::remove_dir_all(&temp_dir).unwrap_or_else(|e| {
