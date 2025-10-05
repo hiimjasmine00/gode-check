@@ -146,6 +146,10 @@ fn main() {
     let mut geode_files: Vec<Vec<PathBuf>> = vec![];
 
     for i in 0..artifacts_len {
+        let artifact = &artifacts[i];
+        let id = artifact["id"].as_u64().unwrap_or_default();
+        let workflow_run_id = artifact["workflow_run"]["id"].as_u64().unwrap_or_default();
+
         if artifacts_len == 1 {
             println!("Downloading artifact...");
         } else {
@@ -160,10 +164,26 @@ fn main() {
             });
         }
 
+        let suite_id = client
+            .get(&format!("{api_url}/actions/runs/{workflow_run_id}"))
+            .header("Accept", "application/json")
+            .header("User-Agent", "gode-check")
+            .send()
+            .unwrap_or_else(|e| {
+                eprintln!("{}", format!("Error fetching workflow run: {:?}", e).red());
+                process::exit(1);
+            })
+            .json::<Value>()
+            .unwrap_or_else(|e| {
+                eprintln!("{}", format!("Error parsing workflow run JSON: {:?}", e).red());
+                process::exit(1);
+            })["check_suite"]["id"].as_u64().unwrap_or_default();
+
         let mut zip_data: Cursor<Vec<u8>> = Cursor::new(vec![]);
 
         client
-            .get(&format!("https://artifacts.hiimjasmine00.com/{repo}/{}", artifacts[i]["id"].as_u64().unwrap_or_default()))
+            .get(&format!("https://nightly.link/{repo}/suites/{suite_id}/artifacts/{id}"))
+            .header("Accept", "application/octet-stream")
             .send()
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error downloading artifact: {:?}", e).red());

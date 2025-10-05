@@ -1,4 +1,4 @@
-# Some ideas were taken from https://github.com/geode-sdk/cli/blob/v3.4.0/.github/workflows/build.yml
+# Some ideas were taken from https://github.com/geode-sdk/cli/blob/v3.7.0/.github/workflows/build.yml
 
 name: Build Binaries
 on:
@@ -52,7 +52,7 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.config.target }}
-  
+
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.config.id }}
