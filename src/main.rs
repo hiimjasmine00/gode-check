@@ -1,14 +1,18 @@
 use colored::Colorize;
+use futures_util::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 
 use std::env;
 use std::fs;
 use std::io::Cursor;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process;
 use std::collections::HashMap;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = env::args().collect::<Vec<String>>();
     if args.len() < 2 {
         println!("gode-check v{}\nUsage: gode-check <release link> [artifact commit]", env!("CARGO_PKG_VERSION"));
@@ -28,7 +32,7 @@ fn main() {
     let api_url = format!("https://api.github.com/repos/{repo}");
     let tag = parts[7];
 
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::Client::new();
 
     let release = client
         .get(&format!("{api_url}/releases/tags/{tag}"))
@@ -36,11 +40,13 @@ fn main() {
         .header("User-Agent", "gode-check")
         .header("Authorization", github_auth.clone())
         .send()
+        .await
         .unwrap_or_else(|e| {
             eprintln!("{}", format!("Error fetching release: {:?}", e).red());
             process::exit(1);
         })
         .json::<Value>()
+        .await
         .unwrap_or_else(|e| {
             eprintln!("{}", format!("Error parsing release JSON: {:?}", e).red());
             process::exit(1);
@@ -58,11 +64,13 @@ fn main() {
             .header("User-Agent", "gode-check")
             .header("Authorization", github_auth.clone())
             .send()
+            .await
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error fetching tags: {:?}", e).red());
                 process::exit(1);
             })
             .json::<Value>()
+            .await
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error parsing tags JSON: {:?}", e).red());
                 process::exit(1);
@@ -75,11 +83,13 @@ fn main() {
                 .header("User-Agent", "gode-check")
                 .header("Authorization", github_auth.clone())
                 .send()
+                .await
                 .unwrap_or_else(|e| {
                     eprintln!("{}", format!("Error fetching tag object: {:?}", e).red());
                     process::exit(1);
                 })
                 .json::<Value>()
+                .await
                 .unwrap_or_else(|e| {
                     eprintln!("{}", format!("Error parsing tag object JSON: {:?}", e).red());
                     process::exit(1);
@@ -98,11 +108,13 @@ fn main() {
         .header("User-Agent", "gode-check")
         .header("Authorization", github_auth.clone())
         .send()
+        .await
         .unwrap_or_else(|e| {
             eprintln!("{}", format!("Error fetching artifacts: {:?}", e).red());
             process::exit(1);
         })
         .json::<Value>()
+        .await
         .unwrap_or_else(|e| {
             eprintln!("{}", format!("Error parsing artifacts JSON: {:?}", e).red());
             process::exit(1);
@@ -164,7 +176,7 @@ fn main() {
             println!("Downloading artifact {}...", i + 1);
         }
 
-        let artifact_path = artifact_dir.join(i.to_string());
+        let artifact_path = artifact_dir.join(id.to_string());
         if !artifact_path.exists() {
             fs::create_dir(&artifact_path).unwrap_or_else(|e| {
                 eprintln!("{}", format!("Failed to create artifact directory: {:?}", e).red());
@@ -178,11 +190,13 @@ fn main() {
             .header("User-Agent", "gode-check")
             .header("Authorization", github_auth.clone())
             .send()
+            .await
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error fetching workflow run: {:?}", e).red());
                 process::exit(1);
             })
             .json::<Value>()
+            .await
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error parsing workflow run JSON: {:?}", e).red());
                 process::exit(1);
@@ -190,19 +204,40 @@ fn main() {
 
         let mut zip_data: Cursor<Vec<u8>> = Cursor::new(vec![]);
 
-        client
+        let response = client
             .get(&format!("https://nightly.link/{repo}/suites/{suite_id}/artifacts/{id}"))
             .header("Accept", "application/octet-stream")
             .send()
+            .await
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error downloading artifact: {:?}", e).red());
                 process::exit(1);
-            })
-            .copy_to(&mut zip_data)
+            });
+
+        let total_size = response.content_length().unwrap_or_else(|| {
+            eprintln!("{}", "Failed to get content length for artifact".red());
+            process::exit(1);
+        });
+
+        let pb = ProgressBar::new(total_size);
+        pb.set_style(ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .unwrap_or_else(|e| {
-                eprintln!("{}", format!("Error reading artifact file: {:?}", e).red());
+                eprintln!("{}", format!("Error setting progress bar style: {:?}", e).red());
+                process::exit(1);
+            })
+            .progress_chars("#>-"));
+
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.unwrap_or_else(|e| {
+                eprintln!("{}", format!("Error reading artifact chunk: {:?}", e).red());
                 process::exit(1);
             });
+            zip_data.get_mut().extend_from_slice(&chunk);
+            pb.inc(chunk.len() as u64);
+        }
+        pb.finish_with_message("Download complete");
 
         let mut zip = zip::ZipArchive::new(zip_data).unwrap_or_else(|e| {
             eprintln!("{}", format!("Error reading zip archive: {:?}", e).red());
@@ -229,22 +264,48 @@ fn main() {
     }).clone();
 
     let release_path = release_dir.join(release_asset["name"].as_str().unwrap_or_default());
-    client
+    let response = client
         .get(release_asset["browser_download_url"].as_str().unwrap_or_default())
         .header("Accept", "application/octet-stream")
         .send()
+        .await
         .unwrap_or_else(|e| {
             eprintln!("{}", format!("Error downloading release file: {:?}", e).red());
             process::exit(1);
-        })
-        .copy_to(&mut fs::File::create(&release_path).unwrap_or_else(|e| {
-            eprintln!("{}", format!("Error creating release file: {:?}", e).red());
-            process::exit(1);
-        }))
+        });
+
+    let total_size = response.content_length().unwrap_or_else(|| {
+        eprintln!("{}", "Failed to get content length for release file".red());
+        process::exit(1);
+    });
+
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
         .unwrap_or_else(|e| {
-            eprintln!("{}", format!("Error saving release file: {:?}", e).red());
+            eprintln!("{}", format!("Error setting progress bar style: {:?}", e).red());
+            process::exit(1);
+        })
+        .progress_chars("#>-"));
+
+    let mut file = fs::File::create(&release_path).unwrap_or_else(|e| {
+        eprintln!("{}", format!("Error creating release file: {:?}", e).red());
+        process::exit(1);
+    });
+
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.unwrap_or_else(|e| {
+            eprintln!("{}", format!("Error reading release chunk: {:?}", e).red());
             process::exit(1);
         });
+        file.write_all(&chunk).unwrap_or_else(|e| {
+            eprintln!("{}", format!("Error writing to release file: {:?}", e).red());
+            process::exit(1);
+        });
+        pb.inc(chunk.len() as u64);
+    }
+    pb.finish_with_message("Download complete");
 
     for i in 0..artifacts_len {
         if geode_files.len() > 1 {

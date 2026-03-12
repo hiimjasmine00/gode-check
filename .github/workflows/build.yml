@@ -118,3 +118,4 @@ jobs:
           name: ${{ steps.read_version.outputs.version }}
           draft: true
           prerelease: false
+          overwrite_files: false
