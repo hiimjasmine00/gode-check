@@ -103,7 +103,7 @@ async fn main() {
     }
 
     let artifacts = client
-        .get(&format!("{api_url}/actions/artifacts"))
+        .get(&format!("{api_url}/actions/artifacts?per_page=100"))
         .header("Accept", "application/json")
         .header("User-Agent", "gode-check")
         .header("Authorization", github_auth.clone())
