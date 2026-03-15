@@ -309,7 +309,8 @@ async fn main() {
 
     for i in 0..artifacts_len {
         if geode_files.len() > 1 {
-            println!("{}", format!("Artifact {} ({}):", i + 1, &artifacts[i]["name"].as_str().unwrap_or_default()).yellow());
+            println!("{}", format!("Artifact {} (ID: {}, Name: {}):",
+                i + 1, &artifacts[i]["id"].as_u64().unwrap_or_default().to_string(), &artifacts[i]["name"].as_str().unwrap_or_default()).yellow());
         }
         let artifact_files = &geode_files[i];
         for artifact_file in artifact_files {
