@@ -46,7 +46,7 @@ jobs:
     runs-on: ${{ matrix.config.runs-on }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@v1
         with:
@@ -81,7 +81,7 @@ jobs:
           mv ./target/${{ matrix.config.target }}/release/${{ matrix.config.executable }} ./output/gode-check-${VERSION}${SUFFIX}
 
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gode-check-${{ matrix.config.id }}
           path: ./output/
@@ -92,10 +92,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: artifacts

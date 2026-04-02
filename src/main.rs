@@ -200,7 +200,7 @@ async fn main() {
             .unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error parsing workflow run JSON: {:?}", e).red());
                 process::exit(1);
-            })["check_suite"]["id"].as_u64().unwrap_or_default();
+            })["check_suite_id"].as_u64().unwrap_or_default();
 
         let mut zip_data: Cursor<Vec<u8>> = Cursor::new(vec![]);
 
