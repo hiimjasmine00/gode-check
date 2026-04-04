@@ -165,16 +165,11 @@ async fn main() {
 
     let mut geode_files: Vec<Vec<PathBuf>> = vec![];
 
-    for i in 0..artifacts_len {
-        let artifact = &artifacts[i];
+    for artifact in &artifacts {
         let id = artifact["id"].as_u64().unwrap_or_default();
         let workflow_run_id = artifact["workflow_run"]["id"].as_u64().unwrap_or_default();
 
-        if artifacts_len == 1 {
-            println!("Downloading artifact...");
-        } else {
-            println!("Downloading artifact {}...", i + 1);
-        }
+        println!("Downloading artifact {} from run {}...", id, workflow_run_id);
 
         let artifact_path = artifact_dir.join(id.to_string());
         if !artifact_path.exists() {
@@ -184,35 +179,47 @@ async fn main() {
             });
         }
 
-        let suite_id = client
-            .get(&format!("{api_url}/actions/runs/{workflow_run_id}"))
-            .header("Accept", "application/json")
-            .header("User-Agent", "gode-check")
-            .header("Authorization", github_auth.clone())
-            .send()
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("{}", format!("Error fetching workflow run: {:?}", e).red());
-                process::exit(1);
-            })
-            .json::<Value>()
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("{}", format!("Error parsing workflow run JSON: {:?}", e).red());
-                process::exit(1);
-            })["check_suite_id"].as_u64().unwrap_or_default();
+        let response: reqwest::Response;
+        if github_auth.is_empty() {
+            let suite_id = client
+                .get(&format!("{api_url}/actions/runs/{workflow_run_id}"))
+                .header("Accept", "application/json")
+                .header("User-Agent", "gode-check")
+                .header("Authorization", github_auth.clone())
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("{}", format!("Error fetching workflow run: {:?}", e).red());
+                    process::exit(1);
+                })
+                .json::<Value>()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("{}", format!("Error parsing workflow run JSON: {:?}", e).red());
+                    process::exit(1);
+                })["check_suite_id"].as_u64().unwrap_or_default();
 
-        let mut zip_data: Cursor<Vec<u8>> = Cursor::new(vec![]);
-
-        let response = client
-            .get(&format!("https://nightly.link/{repo}/suites/{suite_id}/artifacts/{id}"))
-            .header("Accept", "application/octet-stream")
-            .send()
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("{}", format!("Error downloading artifact: {:?}", e).red());
-                process::exit(1);
-            });
+            response = client
+                .get(&format!("https://nightly.link/{repo}/suites/{suite_id}/artifacts/{id}"))
+                .header("Accept", "application/octet-stream")
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("{}", format!("Error downloading artifact: {:?}", e).red());
+                    process::exit(1);
+                });
+        } else {
+            response = client
+                .get(&format!("{api_url}/actions/artifacts/{id}/zip"))
+                .header("User-Agent", "gode-check")
+                .header("Authorization", github_auth.clone())
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("{}", format!("Error downloading artifact: {:?}", e).red());
+                    process::exit(1);
+                });
+        }
 
         let total_size = response.content_length().unwrap_or_else(|| {
             eprintln!("{}", "Failed to get content length for artifact".red());
@@ -228,6 +235,8 @@ async fn main() {
             })
             .progress_chars("#>-"));
 
+        let mut zip_data: Cursor<Vec<u8>> = Cursor::new(vec![]);
+
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.unwrap_or_else(|e| {
@@ -238,6 +247,12 @@ async fn main() {
             pb.inc(chunk.len() as u64);
         }
         pb.finish_with_message("Download complete");
+
+        if !zip_data.get_ref().starts_with(b"PK") {
+            eprintln!("{}", "Downloaded artifact is not a valid zip file:".red());
+            eprintln!("{}", String::from_utf8_lossy(zip_data.get_ref()).red());
+            process::exit(1);
+        }
 
         let mut zip = zip::ZipArchive::new(zip_data).unwrap_or_else(|e| {
             eprintln!("{}", format!("Error reading zip archive: {:?}", e).red());
