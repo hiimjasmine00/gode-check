@@ -3,13 +3,13 @@ use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Cursor;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process;
-use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() {
@@ -99,7 +99,7 @@ async fn main() {
             release_commit = release_object["object"]["sha"].as_str().unwrap_or_default().to_string();
         }
 
-        println!("Release found for commit: {}", release_commit.cyan());
+        println!("Commit found for release: {}", release_commit.cyan());
     }
 
     let artifacts = client
@@ -133,9 +133,9 @@ async fn main() {
         eprintln!("{}", "No artifacts found for the commit".red());
         process::exit(1);
     } else if artifacts_len > 1 {
-        println!("{}", format!("{} artifacts for commit found!", artifacts_len).green());
+        println!("{}", format!("{} artifacts found!", artifacts_len).green());
     } else {
-        println!("{}", "Artifact for commit found!".green());
+        println!("{}", "Artifact found!".green());
     }
 
     let temp_dir = std::env::temp_dir().join("gode-check");
@@ -163,7 +163,7 @@ async fn main() {
         process::exit(1);
     });
 
-    let mut geode_files: Vec<Vec<PathBuf>> = vec![];
+    let mut geode_files: HashMap<u64, Vec<PathBuf>> = HashMap::new();
 
     for artifact in &artifacts {
         let id = artifact["id"].as_u64().unwrap_or_default();
@@ -263,7 +263,7 @@ async fn main() {
             process::exit(1);
         });
 
-        geode_files.push(fs::read_dir(&artifact_path).unwrap_or_else(|e| {
+        geode_files.insert(id, fs::read_dir(&artifact_path).unwrap_or_else(|e| {
             eprintln!("{}", format!("Error reading artifact directory: {:?}", e).red());
             process::exit(1);
         }).filter_map(Result::ok).filter(|f| f.path().extension().map(|e| e == "geode").unwrap_or(false)).map(|f| f.path()).collect());
@@ -322,12 +322,12 @@ async fn main() {
     }
     pb.finish_with_message("Download complete");
 
-    for i in 0..artifacts_len {
+    for artifact in &artifacts {
+        let id = artifact["id"].as_u64().unwrap_or_default();
         if geode_files.len() > 1 {
-            println!("{}", format!("Artifact {} (ID: {}, Name: {}):",
-                i + 1, &artifacts[i]["id"].as_u64().unwrap_or_default().to_string(), &artifacts[i]["name"].as_str().unwrap_or_default()).yellow());
+            println!("{}", format!("Artifact {} ({}):", id, &artifact["name"].as_str().unwrap_or_default()).yellow());
         }
-        let artifact_files = &geode_files[i];
+        let artifact_files = &geode_files[&id];
         for artifact_file in artifact_files {
             let artifact_data = fs::read(artifact_file).unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error opening artifact file: {:?}", e).red());
@@ -341,18 +341,16 @@ async fn main() {
             let artifact_hash = sha256::digest(artifact_data);
             let release_hash = sha256::digest(release_data);
 
-            if artifact_hash == release_hash {
-                println!("{}", format!("{} {}", if artifact_files.len() > 1 {
-                    format!("{} Comparison:", artifact_file.file_name().unwrap_or_default().to_string_lossy()).blue()
-                } else {
-                    "Comparison:".blue()
-                }, "✅ Match".green()));
+            let comparison = if artifact_files.len() > 1 {
+                format!("Comparison ({}):", artifact_file.file_name().unwrap_or_default().to_string_lossy()).blue()
             } else {
-                println!("{}", format!("{} {}", if artifact_files.len() > 1 {
-                    format!("{} Comparison:", artifact_file.file_name().unwrap_or_default().to_string_lossy()).blue()
-                } else {
-                    "Comparison:".blue()
-                }, "❌ Mismatch".red()));
+                "Comparison:".blue()
+            };
+
+            if artifact_hash == release_hash {
+                println!("{} {}", comparison, "✅ Match".green());
+            } else {
+                println!("{} {}", comparison, "❌ Mismatch".red());
             }
 
             println!("Artifact hash: {}", artifact_hash.cyan());
