@@ -17,8 +17,8 @@ async fn main() {
     if args.len() < 2 {
         println!("gode-check v{}\nUsage: gode-check <release link> [option]", env!("CARGO_PKG_VERSION"));
         println!("Options:");
-        println!("  --branch, -b <branch>    Specify a branch to get the artifacts from instead of the release commit.");
-        println!("  --commit, -c <commit>    Specify a commit to get the artifacts from instead of the release commit.");
+        println!("  --branch, -b <branch name>    Specify a branch to get the artifacts from instead of the release commit.");
+        println!("  --commit, -c <commit hash>    Specify a commit to get the artifacts from instead of the release commit.");
         process::exit(0);
     }
     let url = &args[1];

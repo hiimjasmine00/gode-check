@@ -4,7 +4,14 @@ A CLI that checks the hashes of Geode mods, comparing GitHub releases with workf
 
 ## Usage
 ```
-gode-check <release link> [artifact commit]
+gode-check <release link> [option]
+```
+
+### Options
+Option | Alias | Argument | Description
+-------|-------|----------|------------
+--branch | -b | Branch name | Specify a branch to get the artifacts from instead of the release commit.
+--commit | -c | Commit hash | Specify a commit to get the artifacts from instead of the release commit.
 ```
 
 Optionally, you can set the `GODE_CHECK_GITHUB_TOKEN` environment variable to fetch GitHub requests authenticated for a higher rate limit.
