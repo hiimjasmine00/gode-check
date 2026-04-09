@@ -15,7 +15,10 @@ use std::process;
 async fn main() {
     let args = env::args().collect::<Vec<String>>();
     if args.len() < 2 {
-        println!("gode-check v{}\nUsage: gode-check <release link> [artifact commit]", env!("CARGO_PKG_VERSION"));
+        println!("gode-check v{}\nUsage: gode-check <release link> [option]", env!("CARGO_PKG_VERSION"));
+        println!("Options:");
+        println!("  --branch, -b <branch>    Specify a branch to get the artifacts from instead of the release commit.");
+        println!("  --commit, -c <commit>    Specify a commit to get the artifacts from instead of the release commit.");
         process::exit(0);
     }
     let url = &args[1];
@@ -52,12 +55,45 @@ async fn main() {
             process::exit(1);
         });
 
-    let release_commit: String;
-    if args.len() > 2 {
-        release_commit = args[2].clone();
+    let mut get_commit_from_release = true;
 
-        println!("Using provided commit: {}", release_commit.cyan());
-    } else {
+    let mut release_commit = String::new();
+    if args.len() > 3 {
+        let option = &args[2];
+        if option == "--commit" || option == "-c" {
+            release_commit = args[3].clone();
+            println!("Using provided commit: {}", release_commit.cyan());
+            get_commit_from_release = false;
+        } else if option == "--branch" || option == "-b" {
+            let branch = &args[3];
+            let branch_object = client
+                .get(&format!("{api_url}/branches/{branch}"))
+                .header("Accept", "application/json")
+                .header("User-Agent", "gode-check")
+                .header("Authorization", github_auth.clone())
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("{}", format!("Error fetching branch: {:?}", e).red());
+                    process::exit(1);
+                })
+                .json::<Value>()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("{}", format!("Error parsing branch JSON: {:?}", e).red());
+                    process::exit(1);
+                });
+            release_commit = branch_object["commit"]["sha"].as_str().unwrap_or_default().to_string();
+            println!("Commit found for branch: {}", release_commit.cyan());
+            get_commit_from_release = false;
+        } else {
+            println!("{}", format!("Unknown option '{}', falling back to release commit...", option).yellow());
+        }
+    } else if args.len() == 3 {
+        println!("{}", format!("Unknown option '{}', falling back to release commit...", args[2]).yellow());
+    }
+    
+    if get_commit_from_release {
         let release_object = client
             .get(&format!("{api_url}/git/refs/tags/{tag}"))
             .header("Accept", "application/json")
@@ -249,9 +285,9 @@ async fn main() {
         pb.finish_with_message("Download complete");
 
         if !zip_data.get_ref().starts_with(b"PK") {
-            eprintln!("{}", "Downloaded artifact is not a valid zip file:".red());
-            eprintln!("{}", String::from_utf8_lossy(zip_data.get_ref()).red());
-            process::exit(1);
+            println!("{}", "Downloaded artifact is not a valid zip file:".yellow());
+            println!("{}", String::from_utf8_lossy(zip_data.get_ref()).yellow());
+            continue;
         }
 
         let mut zip = zip::ZipArchive::new(zip_data).unwrap_or_else(|e| {
@@ -269,14 +305,22 @@ async fn main() {
         }).filter_map(Result::ok).filter(|f| f.path().extension().map(|e| e == "geode").unwrap_or(false)).map(|f| f.path()).collect());
     }
 
+    if geode_files.is_empty() {
+        eprintln!("{}", "No .geode files found in artifacts".red());
+        process::exit(1);
+    }
+
     println!("Downloading release file...");
 
-    let release_asset = release["assets"].as_array().unwrap_or(&vec![]).iter().find(|asset| {
+    let release_asset = release["assets"].as_array().unwrap_or_else(|| {
+        eprintln!("{}", "No assets found in the release".red());
+        process::exit(1);
+    }).iter().find(|asset| {
         asset["name"].as_str().unwrap_or_default().ends_with(".geode")
     }).unwrap_or_else(|| {
         eprintln!("{}", "No .geode file found in the release".red());
         process::exit(1);
-    }).clone();
+    });
 
     let release_path = release_dir.join(release_asset["name"].as_str().unwrap_or_default());
     let response = client
@@ -327,7 +371,13 @@ async fn main() {
         if geode_files.len() > 1 {
             println!("{}", format!("Artifact {} ({}):", id, &artifact["name"].as_str().unwrap_or_default()).yellow());
         }
-        let artifact_files = &geode_files[&id];
+
+        let artifact_files_opt = &geode_files.get(&id);
+        if !artifact_files_opt.is_some() {
+            continue;
+        }
+
+        let artifact_files = artifact_files_opt.unwrap();
         for artifact_file in artifact_files {
             let artifact_data = fs::read(artifact_file).unwrap_or_else(|e| {
                 eprintln!("{}", format!("Error opening artifact file: {:?}", e).red());
